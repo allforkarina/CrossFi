@@ -43,7 +43,7 @@ Use Python 3.10+ type hints, `pathlib.Path`, and `dataclass` for records. Follow
 Use `pytest`. Name files `tests/test_*.py` and functions `test_*`. Cover path resolution, split creation, normalization, HDF5 schema, models, and `MMFiPoseDataset.__getitem__`. Use small fixtures instead of the full raw dataset.
 
 ## Architecture Notes
-CSI-Net receives HDF5 `csi_amplitude` and `csi_phase_cos`, prepares `b x 2 x 10 x 342`, and returns a `b1 x b2` Query-Key similarity matrix.
+CSI-Net receives HDF5 `csi_amplitude` and `csi_phase_cos`, prepares `b x 2 x 10 x 342`, and returns a `b1 x b2` Query-Key similarity matrix. Weight-Net consumes template-stage `b x k x k` CSI-Net matrices and returns `b x k` sample quality confidence scores.
 
 ## Commit & Pull Request Guidelines
 History uses short, imperative, lowercase subjects such as `add dataloader .h5 file`. PRs should describe the change, commands run, assumptions, and related issues. Include CLI output when changing HDF5 structure or splits.
