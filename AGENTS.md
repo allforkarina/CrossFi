@@ -54,5 +54,8 @@ Do not commit raw datasets, `.h5` outputs, logs, checkpoints, or runs. Keep mach
 ## Agent-Specific Instructions
 Reply to the user in Chinese. Keep this `AGENTS.md` file and all code/script comments in English. After each project modification, update this guide when core structure, workflow, commands, or operating assumptions change. Keep additions short and actionable.
 
+## Required Code-Change Principles
+Before coding, state assumptions, surface unclear tradeoffs, and ask only when exploration cannot resolve the issue. Prefer the minimum implementation that solves the requested problem; do not add speculative features, abstractions, or flexibility. Make surgical edits only in files required by the task, match existing style, and avoid unrelated refactors or cleanup. Define verifiable success criteria, add or update focused tests when practical, and run the relevant checks before reporting completion.
+
 ## Local and Server Workflow
 This Windows repository is for local editing only, not model training. Training scripts and long-running experiments run on the Linux server. After each completed update, commit changes and push them to GitHub `origin`; the Linux server receives updates with `git pull`.
