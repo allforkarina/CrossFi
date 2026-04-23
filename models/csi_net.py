@@ -6,8 +6,8 @@ import torch
 from torch import Tensor, nn
 
 
-CSI_NET_INPUT_SHAPE = (2, 10, 342)
-RAW_CSI_SHAPE = (3, 114, 10)
+CSI_NET_INPUT_SHAPE = (2, 10, 342)      # input size: 2 - amp and phase_cosine, 10 - time shots, 342 - 3 antennas x 114 subcarriers
+RAW_CSI_SHAPE = (3, 114, 10)            # raw input size: 3 antennas, 114 subcarriers, 10 time shots
 
 
 def prepare_csi_net_input(csi_amplitude: Tensor, csi_phase_cos: Tensor) -> Tensor:
@@ -21,21 +21,22 @@ def prepare_csi_net_input(csi_amplitude: Tensor, csi_phase_cos: Tensor) -> Tenso
             f"got {tuple(csi_amplitude.shape)} and {tuple(csi_phase_cos.shape)}"
         )
 
-    stacked = torch.stack((csi_amplitude, csi_phase_cos), dim=1)
-    stacked = stacked.permute(0, 1, 4, 2, 3).reshape(-1, *CSI_NET_INPUT_SHAPE)
-    return _interpolate_nonfinite(stacked)
+    stacked = torch.stack((csi_amplitude, csi_phase_cos), dim=1)                # b x 2 x 3 x 114 x 10
+    stacked = stacked.permute(0, 1, 4, 2, 3).reshape(-1, *CSI_NET_INPUT_SHAPE)  # b x 2 x 10 x 342
+    return _interpolate_nonfinite(stacked)                                      # interpolate values if any infinite
 
 
+# CSI-Net structure defined.
 class CSINet(nn.Module):
     """Cross-domain Siamese CSI similarity network."""
 
     def __init__(
         self,
-        feature_dim: int = 256,
-        projection_dim: int = 128,
-        num_heads: int = 4,
-        temperature: float = 0.1,
-        pretrained: bool = True,
+        feature_dim: int = 256,         # feature dimension after the ResNet backbone
+        projection_dim: int = 128,      # Linear projection dimension, downsample
+        num_heads: int = 4,             # multi-head attention
+        temperature: float = 0.1,       # smoothed factor for sigmoid output
+        pretrained: bool = True,        # ResNet backbone use pretrained weight on ImageNet
     ) -> None:
         super().__init__()
         if projection_dim % num_heads != 0:
@@ -43,42 +44,43 @@ class CSINet(nn.Module):
         if temperature <= 0:
             raise ValueError("temperature must be positive")
 
-        self.feature_dim = feature_dim
-        self.projection_dim = projection_dim
-        self.num_heads = num_heads
-        self.head_dim = projection_dim // num_heads
+        self.feature_dim = feature_dim                  # 256
+        self.projection_dim = projection_dim            # 128
+        self.num_heads = num_heads                      # 4 
+        self.head_dim = projection_dim // num_heads     # 128 / 4 = 32
 
-        self.backbone = _build_resnet18_feature_extractor(pretrained=pretrained)
-        self.reducer = nn.Linear(512, feature_dim)
-        self.query_mapper = nn.Linear(feature_dim, projection_dim)
-        self.key_mapper = nn.Linear(feature_dim, projection_dim)
+        self.backbone = _build_resnet18_feature_extractor(pretrained=pretrained)    # 2 -> 64 -> 128 -> 256 -> 512, output [b, 512]
+        self.reducer = nn.Linear(512, feature_dim)                                  # Linear Layer, from 512 -> 256
+        self.query_mapper = nn.Linear(feature_dim, projection_dim)                  # Linear Layer, from 256 -> 128
+        self.key_mapper = nn.Linear(feature_dim, projection_dim)                    # Linear Layer, from 256 -> 128
         self.log_temperature = nn.Parameter(torch.tensor(math.log(temperature), dtype=torch.float32))
 
     def encode(self, csi_input: Tensor) -> Tensor:
         """Encode prepared CSI tensors into shared low-dimensional features."""
 
         _validate_prepared_csi_tensor(csi_input, "csi_input")
-        return self.reducer(self.backbone(csi_input))
+        return self.reducer(self.backbone(csi_input))                               # b x 256
 
     def forward(self, query: Tensor, key: Tensor) -> Tensor:
         """Return a b1 x b2 matrix of query-key similarity probabilities."""
 
-        query_features = self.query_mapper(self.encode(query))
-        key_features = self.key_mapper(self.encode(key))
+        query_features = self.query_mapper(self.encode(query))                                      # b1 x 256 -> b1 x 128
+        key_features = self.key_mapper(self.encode(key))                                            # b2 x 256 -> b2 x 128
 
-        query_heads = query_features.reshape(-1, self.num_heads, self.head_dim).transpose(0, 1)
-        key_heads = key_features.reshape(-1, self.num_heads, self.head_dim).transpose(0, 1)
+        query_heads = query_features.reshape(-1, self.num_heads, self.head_dim).transpose(0, 1)     # [h, b1, 128 // h]
+        key_heads = key_features.reshape(-1, self.num_heads, self.head_dim).transpose(0, 1)         # [h, b2, 128 // h]
 
-        scores = torch.matmul(query_heads, key_heads.transpose(-1, -2))
-        scores = scores / math.sqrt(self.head_dim)
-        scores = scores.mean(dim=0)
+        scores = torch.matmul(query_heads, key_heads.transpose(-1, -2))                             # [h, b1, b2]
+        scores = scores / math.sqrt(self.head_dim)                                                  # scale by head dimension
+        scores = scores.mean(dim=0)                                                                 # average over heads, [b1, b2]
 
-        temperature = self.log_temperature.exp().clamp_min(1e-6)
-        return torch.sigmoid(scores / temperature)
+        temperature = self.log_temperature.exp().clamp_min(1e-6)                                    # ensure temperature is positive  
+        return torch.sigmoid(scores / temperature)                                                  # apply temperature scaling and sigmoid, [b1, b2]
 
 
 def _build_resnet18_feature_extractor(pretrained: bool) -> nn.Module:
     try:
+        # try to load pretrained ResNet-18 weight
         from torchvision.models import ResNet18_Weights, resnet18
     except ImportError as exc:  # pragma: no cover - depends on local environment.
         raise ImportError("Install torchvision to use CSINet: python -m pip install torchvision") from exc
@@ -86,9 +88,9 @@ def _build_resnet18_feature_extractor(pretrained: bool) -> nn.Module:
     weights = ResNet18_Weights.DEFAULT if pretrained else None
     model = resnet18(weights=weights)
     original_conv = model.conv1
-    model.conv1 = nn.Conv2d(
+    model.conv1 = nn.Conv2d(                                                            # modify the first conv layer, only change the in_channels.
         in_channels=2,
-        out_channels=original_conv.out_channels,
+        out_channels=original_conv.out_channels,                                        # remain configs stay the same
         kernel_size=original_conv.kernel_size,
         stride=original_conv.stride,
         padding=original_conv.padding,
@@ -96,10 +98,10 @@ def _build_resnet18_feature_extractor(pretrained: bool) -> nn.Module:
     )
 
     with torch.no_grad():
-        averaged_weight = original_conv.weight.mean(dim=1, keepdim=True)
-        model.conv1.weight.copy_(averaged_weight.repeat(1, 2, 1, 1))
+        averaged_weight = original_conv.weight.mean(dim=1, keepdim=True)                # average the origin conv weight
+        model.conv1.weight.copy_(averaged_weight.repeat(1, 2, 1, 1))                    # repeat the weight and put into the new conv layer
         if original_conv.bias is not None and model.conv1.bias is not None:
-            model.conv1.bias.copy_(original_conv.bias)
+            model.conv1.bias.copy_(original_conv.bias)                                  # copy bias
 
     model.fc = nn.Identity()
     return model
