@@ -103,7 +103,7 @@ def _build_resnet18_feature_extractor(pretrained: bool) -> nn.Module:
         if original_conv.bias is not None and model.conv1.bias is not None:
             model.conv1.bias.copy_(original_conv.bias)                                  # copy bias
 
-    model.fc = nn.Identity()
+    model.fc = nn.Identity()                                                            # remove the final fully connected layer, output feature map will be [b, 512]   
     return model
 
 
