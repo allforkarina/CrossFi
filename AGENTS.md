@@ -1,20 +1,21 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-This is a compact Python utility for MM-Fi pose data.
+Compact Python utility for MM-Fi pose data.
 
-- `dataloader.py` contains raw dataset discovery, HDF5 packing helpers, `MMFiPoseDataset`, PyTorch `DataLoader` factories, and a CLI for HDF5 inspection.
+- `dataloader.py` contains dataset discovery, HDF5 packing, `MMFiPoseDataset`, loaders, and an inspection CLI.
+- `models/` contains trainable model modules, including CSI-Net for Query-Key CSI similarity scoring.
 - `scripts/build_h5_dataset.py` converts the raw MM-Fi directory tree into one `.h5` file.
+- `tests/` contains lightweight pytest coverage for model and data utility behavior.
 - `data/`, `outputs/`, `runs/`, and `checkpoints/` are ignored local artifact paths.
-- No `tests/` directory exists yet. Add tests under `tests/`.
 
 ## Build, Test, and Development Commands
-Create a virtual environment before installing dependencies.
+Create a virtual environment, then install dependencies.
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install h5py numpy scipy tqdm torch sympy
+python -m pip install h5py numpy scipy tqdm torch torchvision sympy pytest
 ```
 
 Build an HDF5 dataset from raw MM-Fi files:
@@ -36,16 +37,19 @@ python -m pytest
 ```
 
 ## Coding Style & Naming Conventions
-Use Python 3.10+ type hints, `pathlib.Path` for paths, and `dataclass` for simple records. Follow PEP 8 with 4-space indentation. Use `snake_case` for functions and variables, `PascalCase` for classes, and uppercase constants such as `SPLIT_NAMES`. Add concise English comments only for non-obvious logic; keep adjacent comments neatly aligned.
+Use Python 3.10+ type hints, `pathlib.Path`, and `dataclass` for records. Follow PEP 8 with 4-space indentation. Use `snake_case` for functions and variables, `PascalCase` for classes, and uppercase constants. Add concise English comments only for non-obvious logic; keep adjacent comments aligned.
 
 ## Testing Guidelines
-Use `pytest` for new tests. Name files `tests/test_*.py` and test functions `test_*`. Cover path resolution, sample/environment mapping, split creation, normalization, HDF5 schema, and `MMFiPoseDataset.__getitem__`. Use small temporary HDF5 fixtures instead of the full raw dataset.
+Use `pytest`. Name files `tests/test_*.py` and functions `test_*`. Cover path resolution, split creation, normalization, HDF5 schema, models, and `MMFiPoseDataset.__getitem__`. Use small fixtures instead of the full raw dataset.
+
+## Architecture Notes
+CSI-Net receives HDF5 `csi_amplitude` and `csi_phase_cos`, prepares `b x 2 x 10 x 342`, and returns a `b1 x b2` Query-Key similarity matrix.
 
 ## Commit & Pull Request Guidelines
-Current history uses short, imperative, lowercase commit subjects such as `add dataloader .h5 file`. Keep subjects concise and action-oriented. Pull requests should describe the data-loading change, commands run, dataset assumptions, and related issues. Include CLI output when changing HDF5 structure or split behavior.
+History uses short, imperative, lowercase subjects such as `add dataloader .h5 file`. PRs should describe the change, commands run, assumptions, and related issues. Include CLI output when changing HDF5 structure or splits.
 
 ## Security & Configuration Tips
-Do not commit raw datasets, `.h5` outputs, logs, checkpoints, or experiment runs. Keep machine-specific dataset paths configurable through CLI arguments instead of hard-coding new local paths.
+Do not commit raw datasets, `.h5` outputs, logs, checkpoints, or runs. Keep machine-specific paths configurable through CLI arguments.
 
 ## Agent-Specific Instructions
 Reply to the user in Chinese. Keep this `AGENTS.md` file and all code/script comments in English. After each project modification, update this guide when core structure, workflow, commands, or operating assumptions change. Keep additions short and actionable.
